@@ -2,12 +2,20 @@
 name = "bevy_shatter"
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["Ivan Ribeiro ivan.ribeiro09s@gmail.com"]
+repository = "https://github.com/ivsop/bevy_shatter"
+categories = ["game-development"]
+keywords = ["bevy", "gamedev", "glass", "shatter"]
+description = "A bevy plugin to allow simulating shattered glass"
+readme = "README.md"
 
 [dependencies]
 avian3d = "0.3.1"
 bevy = { version = "^0.16", default-features = false, features = [
     "bevy_log",
 ]}
+voronator = "0.2.1"
 
 [dev-dependencies]
 bevy-tnua-avian3d = "0.5.0"

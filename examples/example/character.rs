@@ -2,13 +2,10 @@
 // tnua is used as the character controller
 
 use bevy::{
-    core_pipeline::{
-        bloom::Bloom,
-        tonemapping::Tonemapping,
-    },
-    prelude::*,
-    math::*,
+    core_pipeline::{bloom::Bloom, tonemapping::Tonemapping},
     input::mouse::AccumulatedMouseMotion,
+    math::*,
+    prelude::*,
 };
 
 use avian3d::prelude::*;
@@ -44,42 +41,32 @@ pub struct CharacterPlugin;
 
 impl Plugin for CharacterPlugin {
     fn build(&self, app: &mut App) {
-        app
-            .add_plugins((
-                // physics run on FixedPostUpdate
-                TnuaControllerPlugin::new(FixedUpdate),
-                TnuaAvian3dPlugin::new(FixedUpdate),
-            ))
-            .add_systems(
-                Startup,
-                (
-                    spawn,
-                    snap_camera, // run this once at the start to make sure it is in the correct place
-                ).chain()
+        app.add_plugins((
+            // physics run on FixedPostUpdate
+            TnuaControllerPlugin::new(FixedUpdate),
+            TnuaAvian3dPlugin::new(FixedUpdate),
+        ))
+        .add_systems(
+            Startup,
+            (
+                spawn,
+                snap_camera, // run this once at the start to make sure it is in the correct place
             )
-            .add_systems(
-                Update,
-                (
-                    accumulate_inputs,
-                    snap_camera,
-
-                    rotate_camera,
-                )
+                .chain(),
+        )
+        .add_systems(Update, (accumulate_inputs, snap_camera, rotate_camera))
+        .add_systems(
+            Update,
+            (
+                character_controller,
+                // these only work if camera does not have the FreeCam component
             )
-            .add_systems(
-                Update,
-                (
-                    character_controller,
-                    // these only work if camera does not have the FreeCam component
-                )
-                .in_set(TnuaUserControlsSystemSet)
-            );
-        }
+                .in_set(TnuaUserControlsSystemSet),
+        );
+    }
 }
 
-fn spawn(
-    mut commands: Commands,
-) {
+fn spawn(mut commands: Commands) {
     let transform = Transform {
         // translation: Vec3::new(0.0, 2.0, 14.0),
         translation: Vec3::new(0.0, 3.0, -10.0),
@@ -99,7 +86,8 @@ fn spawn(
     commands.spawn((
         PlayerCamera,
         // transform,
-        Transform { // will get snapped to the player's position
+        Transform {
+            // will get snapped to the player's position
             ..default()
         },
         Camera3d::default(),
@@ -177,7 +165,7 @@ fn rotate_camera(
 ) {
     let camera_sensitivity = Vec2::splat(0.00052);
     let delta = accumulated_mouse_motion.delta;
-    
+
     if delta != Vec2::ZERO {
         // Note that we are not multiplying by delta_time here.
         // The reason is that for mouse movement, we already get the full movement that happened since the last frame.
@@ -190,7 +178,6 @@ fn rotate_camera(
 
         let (yaw, pitch, roll) = cam_transform.rotation.to_euler(EulerRot::YXZ);
         let yaw = yaw + delta_yaw;
-
 
         // If the pitch was ±¹⁄₂ π, the camera would look straight up or down.
         // When the user wants to move the camera back to the horizon, which way should the camera face?
@@ -212,16 +199,10 @@ fn rotate_camera(
     }
 }
 
-pub fn character_controller(
-    player: Single<(&mut TnuaController, &Player)>,
-) {
+pub fn character_controller(player: Single<(&mut TnuaController, &Player)>) {
     let (mut controller, player) = player.into_inner();
 
-    let speed = if player.sprinting {
-        10.0
-    } else {
-        4.5
-    };
+    let speed = if player.sprinting { 10.0 } else { 4.5 };
 
     controller.basis(TnuaBuiltinWalk {
         // Move in the direction the player entered, at a speed of 10.0:
@@ -229,7 +210,7 @@ pub fn character_controller(
 
         // Turn the character in the movement direction:
         desired_forward: Some(player.look_dir),
-            
+
         // Must be larger than the height of the entity's center from the bottom of its
         // collider, or else the character will not float and Tnua will not work properly:
         float_height: 2.0,
@@ -249,4 +230,3 @@ pub fn character_controller(
         });
     }
 }
-
