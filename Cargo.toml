@@ -14,6 +14,7 @@ readme = "README.md"
 avian3d = "0.3.1"
 bevy = { version = "^0.16", default-features = false, features = [
     "bevy_log",
+    "bevy_pbr", # temporary until I abstract the StandardMaterial dependency
 ]}
 voronator = "0.2.1"
 fastrand = "2.3.0"

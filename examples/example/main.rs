@@ -92,5 +92,6 @@ fn setup_scene(
             glass: Glass::new_with_density(20.0, 5.0, 0.1, 2.0),
         },
         MeshMaterial3d(glass_material.clone()),
+        RigidBody::Static,
     ));
 }

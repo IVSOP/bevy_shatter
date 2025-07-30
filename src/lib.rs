@@ -1,3 +1,46 @@
+//! # **bevy_shatter** - procedural glass shattering plugin for the [Bevy game engine](https://bevyengine.org/)
+//!
+//! **Note**: This plugin uses [avian3d](https://github.com/Jondolf/avian) for collider generation, but [rapier3d](https://rapier.rs/) integration should be trivial to add in the future
+//!
+//! # Usage
+//!
+//! **Creating glass**
+//!
+//! Add the [`Glass`] component to an entity. A helper is available in [`AutoGlass`] to add other needed components automatically, such as a mesh and a transform with the correct scale.
+//!
+//! **Shattering glass**
+//!
+//! Add the [`Shattered`] component to an entity that has [`Glass`], and glass shards will automatically be created.
+//!
+//! # Customizing behaviour
+//!
+//! **Shards**
+//!
+//! Are entities with the [`Shard`] component.
+//! You can use this to, for example, make an OnAdd hook that automatically makes shards have a dynamic rigid body when added.
+//!
+//! **Shard relationship**
+//!
+//! Shards and their Glass are related using [`ShardOf`] and [`Shards`].
+//!
+//! # Examples
+//!
+//! See the [`examples/`](https://github.com/ivsop/bevy_shatter) folder.
+//!
+//! # Compatibility
+//!
+//! | `bevy_shatter` | `bevy` |
+//! | :--            | :--    |
+//! | `0.1.0`        | `0.16` |
+//!
+//! # How it works
+//!
+//! Currently, the glass is broken into cells using a voronoi diagram. These cells are then extruded to 3D, creating a shard.
+//!
+//! # Contributing
+//!
+//! This plugin is in very early development. PRs and forks are welcome. See TODO.md for a list of things that are missing
+
 use avian3d::prelude::*;
 use bevy::{
     asset::RenderAssetUsages,
@@ -5,10 +48,7 @@ use bevy::{
     prelude::*,
     render::mesh::{Indices, PrimitiveTopology},
 };
-use voronator::{
-    delaunator::{self, *},
-    VoronoiDiagram,
-};
+use voronator::{delaunator::*, VoronoiDiagram};
 
 /// This plugin must be added for everything to work properly
 pub struct ShatterPlugin;
@@ -73,7 +113,6 @@ impl Glass {
         glass_entity: Entity,
         glass_transf: &Transform,
         glass_material: Handle<StandardMaterial>,
-        world_break_pos: Vec3,
         mut commands: Commands,
         mut meshes: ResMut<Assets<Mesh>>,
     ) {
@@ -242,37 +281,49 @@ impl Glass {
                 shard_transform,
                 Mesh3d(meshes.add(mesh)),
                 MeshMaterial3d(glass_material.clone()),
-                // RigidBody::Dynamic,
                 collider,
+                ShardOf(glass_entity),
+                Shard {
+                    pos: Vec2::new(shard_center.0 as f32, shard_center.1 as f32),
+                },
             ));
         }
     }
 }
 
-/// Glass shards are [`ShardOf`] a certain glass.
-/// This way we can leverage ECS to get all the shards belonging to a glass, for example to make them all fall at once
+/// Glass shards are children of a glass, through this relationship.
+/// This allows you to get information on what glass caused certain shards to spawn.
 #[derive(Component)]
 #[relationship(relationship_target = Shards)]
-struct ShardOf(pub Entity);
+pub struct ShardOf(pub Entity);
 
+/// Glasses have shards as their children. This allows you to get all the shards originating in a glass.
+/// With this, you could, for example, despawn the glass entity when all its shards have been despawned.
 #[derive(Component, Deref)]
 #[relationship_target(relationship = ShardOf)]
-struct Shards(Vec<Entity>);
+pub struct Shards(Vec<Entity>);
+
+/// Every glass shard has this component, so you can use it with a hook to customize the shards.
+#[derive(Component)]
+pub struct Shard {
+    /// Position in the glass, relative to the bottom left point
+    pub pos: Vec2,
+}
 
 // TODO: is this cursed? is there a better way?
-/// Allows more automation of glass spawning.
+/// Allows simpler glass spawning, by automatically adding the necessary components.
 /// Requires [`ShatterPlugin`] to have been added.
-/// When an entity with this component is inserted:
 ///
-/// - [`AutoGlass`] component gets removed
-/// - glass gets added as its own [`Glass`] component
-/// - a [`Transform`] component is added
-/// - a [`Mesh3d`] component is added
-/// - a [`RigidBody::Static`] component is added
-/// - a [`Collider`] component is added
+/// Removed components:
+/// - [`AutoGlass`]
 ///
-/// Note: no material component is added or removed
+/// Added components:
+/// - [`Glass`]
+/// - [`Transform`]
+/// - [`Mesh3d`], as a cuboid
+/// - [`Collider`]
 ///
+/// Note: no material or rigid body are added.
 /// You can completely ignore this and do things manually for more control. Keep in mind this function
 /// uses meshes and colliders of size 1x1x1, being only resized by their transform's scale
 #[derive(Component, Debug)]
@@ -288,7 +339,8 @@ struct GlassCollider(Collider);
 #[derive(Resource)]
 struct GlassMesh(Handle<Mesh>);
 
-/// Add this component to an entity with the [`Glass`] component to shatter it
+/// Add this component to an entity with the [`Glass`] component to shatter it,
+/// which creates all the glass shards.
 #[derive(Component)]
 pub struct Shattered;
 
@@ -326,14 +378,12 @@ fn shatter_hook(
     meshes: ResMut<Assets<Mesh>>,
 ) {
     let entity = trigger.target();
-    let mut entitycmd = commands.entity(entity);
 
     let (glass, transform, material) = glasses.get(entity).unwrap();
     glass.shatter(
         entity,
         transform,
         material.0.clone(),
-        Vec3::ZERO,
         commands.reborrow(),
         meshes,
     );
