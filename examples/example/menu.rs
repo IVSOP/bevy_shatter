@@ -36,7 +36,9 @@ fn grab_mouse(
     mut contexts: EguiContexts,
 ) {
     if mouse.just_pressed(MouseButton::Left) {
-        if let Ok(ctx) = contexts.ctx_mut() && ctx.is_pointer_over_area() {
+        if let Ok(ctx) = contexts.ctx_mut()
+            && ctx.is_pointer_over_area()
+        {
             return;
         }
 

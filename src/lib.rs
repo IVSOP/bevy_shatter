@@ -1,6 +1,10 @@
 use avian3d::prelude::*;
-use bevy::prelude::*;
-use fastrand::*;
+use bevy::{
+    asset::RenderAssetUsages,
+    platform::collections::HashMap,
+    prelude::*,
+    render::mesh::{Indices, PrimitiveTopology},
+};
 use voronator::{
     delaunator::{self, *},
     VoronoiDiagram,
@@ -25,7 +29,7 @@ impl Plugin for ShatterPlugin {
 // TODO: store num_cell_points as floats??
 /// The component that marks an entity as glass that can be shattered.
 /// See [`AutoGlass`] for a helper to automate spawning glass entities with all necessary components
-#[derive(Component, Clone)]
+#[derive(Component, Clone, Debug)]
 pub struct Glass {
     pub width: f32,
     pub height: f32,
@@ -71,7 +75,7 @@ impl Glass {
         glass_material: Handle<StandardMaterial>,
         world_break_pos: Vec3,
         mut commands: Commands,
-        meshes: ResMut<Assets<Mesh>>,
+        mut meshes: ResMut<Assets<Mesh>>,
     ) {
         // voronator crashes when the cells overlap or are too close
         // when using a lot of cells or a very small glass, this actually becomes a pain
@@ -116,13 +120,137 @@ impl Glass {
         )
         .expect("Error generating Voronoi diagram");
 
-        // delete the old entity
-        commands.entity(glass_entity).despawn();
+        // mark original entity as invisible
+        commands.entity(glass_entity).insert(Visibility::Hidden);
+
+        // it is (much) easier to offset the vertices themselves than the transform,
+        // so every shard uses this transform which corresponds to the bottom left of the glass
+        let shard_transform = glass_transf.with_scale(Vec3::ONE)
+            * Transform::from_translation(
+                Vec3::new(-self.width, -self.height, self.thickness) / 2.0,
+            );
+
+        // iterate voronoi cells and triangulate them
+        // also need to extrude since we want 3D mesh
+        // TODO: consider generating the normals myself
+        // TODO: extruding vertices was way harder than I expected, I have no idea thy I use negative values like -width and -thickness,
+        // if it works it works. try to replace this with some lib that can extrude meshes in the future, I couldn't find anything decent and lightweight
+        for (cell_id, cell) in voronoi_diagram.cells().iter().enumerate() {
+            let points = cell.points();
+            let shard_center = cells[cell_id];
+
+            // points relative to this cell need to be converted to (f64, f64) for whatever reason
+            // FIX: try to avoid this
+            let cell_points: Vec<(f64, f64)> =
+                points.iter().map(|point| (point.x, point.y)).collect();
+
+            let (delaunay, _) = triangulate_from_tuple::<Point>(&cell_points)
+                .expect("Error running delaunay triangulation on the cell");
+
+            // Original vertices are used as the bottom (z = 0)
+            let mut verts: Vec<Vec3> = points
+                .iter()
+                .map(|point| Vec3::new(point.x as f32, point.y as f32, 0.0))
+                .collect();
+            let n = verts.len();
+
+            // Extruded vertices as the top (z = -thickness)
+            let mut top_verts: Vec<Vec3> = points
+                .iter()
+                .map(|point| Vec3::new(point.x as f32, point.y as f32, -self.thickness))
+                .collect();
+            verts.append(&mut top_verts);
+
+            // now we have to make edges to join the bottom and top vertices.
+            // from here on this was mostly made by grok as I couldn't find any resources on this, and
+            // making the triangles have the exact order you need them to have is hard
+            let mut edge_count: HashMap<(usize, usize), i32> = HashMap::new();
+            for triangle in delaunay.triangles.chunks(3) {
+                let edges = [
+                    (triangle[0], triangle[1]),
+                    (triangle[1], triangle[2]),
+                    (triangle[2], triangle[0]),
+                ];
+                for &(a, b) in edges.iter() {
+                    *edge_count.entry((a, b)).or_insert(0) += 1;
+                    *edge_count.entry((b, a)).or_insert(0) -= 1;
+                }
+            }
+
+            // Only keep edges that appear once (boundary edges)
+            let boundary_edges: Vec<(usize, usize)> = edge_count
+                .iter()
+                .filter(|&(&(_, _), &count)| count == 1)
+                .map(|(&(a, b), _)| (a, b))
+                .collect();
+
+            let mut indices: Vec<u32> = Vec::new();
+
+            // Bottom faces (reversed for outward facing)
+            for triangle in delaunay.triangles.chunks(3) {
+                indices.extend_from_slice(&[
+                    triangle[2] as u32,
+                    triangle[1] as u32,
+                    triangle[0] as u32,
+                ]);
+            }
+
+            // Top faces
+            for triangle in delaunay.triangles.chunks(3) {
+                indices.extend_from_slice(&[
+                    (triangle[0] + n) as u32,
+                    (triangle[1] + n) as u32,
+                    (triangle[2] + n) as u32,
+                ]);
+            }
+
+            // Side faces with proper winding
+            // TODO: calculate normals here??
+            for &(a, b) in boundary_edges.iter() {
+                indices.extend_from_slice(&[
+                    a as u32,
+                    b as u32,
+                    (b + n) as u32,
+                    (b + n) as u32,
+                    (a + n) as u32,
+                    a as u32,
+                ]);
+            }
+
+            // Create the mesh
+            // I assume I will never need the mesh on the CPU again
+            let mut mesh = Mesh::new(
+                PrimitiveTopology::TriangleList,
+                RenderAssetUsages::RENDER_WORLD,
+            )
+            .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, verts)
+            // .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+            .with_inserted_indices(Indices::U32(indices));
+
+            // collider
+            let collider =
+                // Collider::trimesh_from_mesh(&mesh) // this has abysmal performance for some reason, but works fine in rapier
+                Collider::convex_hull_from_mesh(&mesh) // this is probably slow to create but is the only way I can get stable performance with avian
+                .expect("Could not make trimesh out of the extrusion mesh for a cell");
+
+            // add the normals. this is VERY inneficient but whatever, had many issues doing it manually
+            // also, should this be done before collider??
+            mesh = mesh.with_duplicated_vertices().with_computed_flat_normals();
+
+            // spawn the glass shard
+            commands.spawn((
+                shard_transform,
+                Mesh3d(meshes.add(mesh)),
+                MeshMaterial3d(glass_material.clone()),
+                // RigidBody::Dynamic,
+                collider,
+            ));
+        }
     }
 }
 
 /// Glass shards are [`ShardOf`] a certain glass.
-/// This way we can leverage ECS to get all the shards belonging to a glass
+/// This way we can leverage ECS to get all the shards belonging to a glass, for example to make them all fall at once
 #[derive(Component)]
 #[relationship(relationship_target = Shards)]
 struct ShardOf(pub Entity);
@@ -147,7 +275,7 @@ struct Shards(Vec<Entity>);
 ///
 /// You can completely ignore this and do things manually for more control. Keep in mind this function
 /// uses meshes and colliders of size 1x1x1, being only resized by their transform's scale
-#[derive(Component)]
+#[derive(Component, Debug)]
 pub struct AutoGlass {
     pub glass: Glass,
     pub translation: Vec3,
@@ -201,6 +329,12 @@ fn shatter_hook(
     let mut entitycmd = commands.entity(entity);
 
     let (glass, transform, material) = glasses.get(entity).unwrap();
-    glass.shatter(entity, transform, material.0.clone(), Vec3::ZERO, commands.reborrow(), meshes);
+    glass.shatter(
+        entity,
+        transform,
+        material.0.clone(),
+        Vec3::ZERO,
+        commands.reborrow(),
+        meshes,
+    );
 }
-
