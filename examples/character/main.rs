@@ -43,7 +43,9 @@ fn main() {
         ShatterPlugin,
         AtmospherePlugin,
     ))
-    .add_systems(Startup, setup_scene);
+    .add_observer(dynamic_shards)
+    .add_systems(Startup, setup_scene)
+    .add_systems(FixedUpdate, shatter_on_contact);
 
     app.run();
 }
@@ -93,5 +95,39 @@ fn setup_scene(
         },
         MeshMaterial3d(glass_material.clone()),
         RigidBody::Static,
+        CollisionEventsEnabled, 
     ));
+}
+
+// hook to make shards have a dynamic rigid body
+fn dynamic_shards(
+    trigger: Trigger<OnAdd, Shard>,
+    mut commands: Commands,
+) {
+    commands.entity(trigger.target()).insert(RigidBody::Dynamic);
+}
+
+// shatter glass when player collides with it
+// this is very ugly, consider using https://idanarye.github.io/bevy-tnua/avian3d/collision/contact_types/struct.Collisions.html
+fn shatter_on_contact(
+    mut collision_event_reader: EventReader<CollisionStarted>,
+    player: Single<Entity, With<Player>>,
+    glasses: Populated<Entity, With<Glass>>,
+    mut commands: Commands,
+) {
+    let player_entity = player.into_inner();
+    for CollisionStarted(entity1, entity2) in collision_event_reader.read() {
+        let entity1 = *entity1;
+        let entity2 = *entity2;
+
+        if entity1 == player_entity {
+            if glasses.contains(entity2) {
+                commands.entity(entity2).insert(Shattered);
+            }
+        } else if entity2 == player_entity {
+            if glasses.contains(entity1) {
+                commands.entity(entity1).insert(Shattered);
+            }
+        }
+    }
 }

@@ -1,4 +1,6 @@
-# **bevy_shatter** - procedural glass shattering plugin for the [Bevy game engine](https://bevyengine.org/)
+# **bevy_shatter**
+
+Procedural glass shattering plugin for the [Bevy game engine](https://bevyengine.org/)
 
 **Note**: This plugin uses [avian3d](https://github.com/Jondolf/avian) for collider generation, but [rapier3d](https://rapier.rs/) integration should be trivial to add in the future
 
@@ -6,21 +8,21 @@
 
 **Creating glass**
 
-Add the [`Glass`] component to an entity. A helper is available in [`AutoGlass`] to add other needed components automatically, such as a mesh and a transform with the correct scale.
+Add the Glass component to an entity. A helper is available in AutoGlass to add other needed components automatically, such as a mesh and a transform with the correct scale.
 
 **Shattering glass**
 
-Add the [`Shattered`] component to an entity that has [`Glass`], and glass shards will automatically be created.
+Add the Shattered component to an entity that has Glass, and glass shards will automatically be created.
 # Customizing behaviour
 
 **Shards**
 
-Are entities with the [`Shard`] component.
+Are entities with the Shard component.
 You can use this to, for example, make an OnAdd hook that automatically makes shards have a dynamic rigid body when added.
 
 **Shard relationship**
 
-Shards and their Glass are related using [`ShardOf`] and [`Shards`].
+Shards and their Glass are related using ShardOf and Shards.
 
 # Examples
 
