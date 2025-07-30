@@ -5,8 +5,9 @@ use character::*;
 mod menu;
 use bevy::{
     prelude::*,
-    window::{CursorGrabMode, PresentMode, WindowTheme},
+    window::{PresentMode, WindowTheme},
 };
+use bevy_atmosphere::prelude::*;
 use menu::*;
 
 fn main() {
@@ -40,28 +41,11 @@ fn main() {
         PhysicsPlugins::default(),
         CharacterPlugin,
         ShatterPlugin,
+        AtmospherePlugin,
     ))
-    .add_systems(Startup, (setup_scene,))
-    .add_systems(Update, (grab_mouse,));
+    .add_systems(Startup, setup_scene);
 
     app.run();
-}
-
-// grab on left click, release on escape
-fn grab_mouse(
-    mut window: Single<&mut Window>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    key: Res<ButtonInput<KeyCode>>,
-) {
-    if mouse.just_pressed(MouseButton::Left) {
-        window.cursor_options.visible = false;
-        window.cursor_options.grab_mode = CursorGrabMode::Locked;
-    }
-
-    if key.just_pressed(KeyCode::Escape) {
-        window.cursor_options.visible = true;
-        window.cursor_options.grab_mode = CursorGrabMode::None;
-    }
 }
 
 fn setup_scene(
@@ -89,12 +73,12 @@ fn setup_scene(
         Collider::cuboid(1.0, 1.0, 0.01),
     ));
 
-    // made by grok to mimic old system shock 2
     let glass_material = materials.add(StandardMaterial {
-        base_color: Color::LinearRgba(LinearRgba::new(0.1, 0.5, 0.5, 0.3)), // Cyan tint with alpha for transparency
-        alpha_mode: AlphaMode::Blend,                                       // Enable transparency
-        metallic: 0.0,                                                      // Glass is not metallic
-        reflectance: 0.1, // Slight reflectance for a subtle sheen
+        // color that contrasts with the sky
+        base_color: Color::LinearRgba(LinearRgba::new(2.5, 0.0, 0.0, 0.65)),
+        alpha_mode: AlphaMode::Blend,
+        metallic: 0.0,
+        reflectance: 0.1,
         emissive: LinearRgba::rgb(0.0, 0.1, 0.1),
         // cull_mode: None, // Render both sides of the glass
         ..default()
@@ -103,16 +87,9 @@ fn setup_scene(
     // glass
     commands.spawn((
         AutoGlass {
-            translation: Vec3::new(10.0, 3.0, 0.0),
+            translation: Vec3::new(0.0, 3.0, -10.0),
             rotation: Quat::IDENTITY,
-            glass: Glass {
-                width: 20.0,
-                height: 5.0,
-                thickness: 0.1,
-                shatter_config: ShatterConfig::Density {
-                    cells_per_unit: 5.0,
-                },
-            },
+            glass: Glass::new_with_density(20.0, 5.0, 0.1, 5.0),
         },
         MeshMaterial3d(glass_material.clone()),
     ));

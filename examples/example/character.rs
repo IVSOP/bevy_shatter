@@ -8,7 +8,9 @@ use bevy::{
     prelude::*,
 };
 
+use crate::MenuState;
 use avian3d::prelude::*;
+use bevy_atmosphere::plugin::AtmosphereCamera;
 use bevy_tnua::prelude::*;
 use bevy_tnua_avian3d::*;
 
@@ -54,7 +56,14 @@ impl Plugin for CharacterPlugin {
             )
                 .chain(),
         )
-        .add_systems(Update, (accumulate_inputs, snap_camera, rotate_camera))
+        .add_systems(
+            Update,
+            (
+                accumulate_inputs,
+                snap_camera,
+                rotate_camera.run_if(in_state(MenuState::Playing)),
+            ),
+        )
         .add_systems(
             Update,
             (
@@ -69,7 +78,7 @@ impl Plugin for CharacterPlugin {
 fn spawn(mut commands: Commands) {
     let transform = Transform {
         // translation: Vec3::new(0.0, 2.0, 14.0),
-        translation: Vec3::new(0.0, 3.0, -10.0),
+        translation: Vec3::new(0.0, 3.0, 0.0),
         rotation: Quat::from_rotation_y(-90.0_f32.to_radians()),
         ..default()
     };
@@ -85,6 +94,7 @@ fn spawn(mut commands: Commands) {
 
     commands.spawn((
         PlayerCamera,
+        AtmosphereCamera::default(),
         // transform,
         Transform {
             // will get snapped to the player's position
@@ -100,7 +110,7 @@ fn spawn(mut commands: Commands) {
         Tonemapping::TonyMcMapface,
         Bloom::NATURAL,
         Projection::from(PerspectiveProjection {
-            fov: 90.0_f32.to_radians(),
+            fov: 80.0_f32.to_radians(),
             ..default()
         }),
     ));

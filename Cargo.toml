@@ -16,6 +16,7 @@ bevy = { version = "^0.16", default-features = false, features = [
     "bevy_log",
 ]}
 voronator = "0.2.1"
+fastrand = "2.3.0"
 
 [dev-dependencies]
 bevy-tnua-avian3d = "0.5.0"
@@ -59,5 +60,16 @@ bevy = { version = "0.16.1", default-features = false, features = [
     # optional bevy features
     "serialize",
     "wayland",
+    "dynamic_linking"
 ]}
 bevy_egui = "0.35.1"
+bevy_atmosphere = "0.13.0"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[features]
+wasm = ["fastrand/js"]
