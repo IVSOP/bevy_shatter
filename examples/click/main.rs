@@ -1,13 +1,13 @@
-mod character;
 use avian3d::{prelude::*, PhysicsPlugins};
 use bevy_shatter::*;
-use character::*;
 mod menu;
 use bevy::{
+    core_pipeline::{bloom::Bloom, tonemapping::Tonemapping},
     prelude::*,
     window::{PresentMode, WindowTheme},
 };
 use bevy_atmosphere::prelude::*;
+use bevy_spectator::*;
 use menu::*;
 
 fn main() {
@@ -39,14 +39,25 @@ fn main() {
         }),
         MenuPlugin,
         PhysicsPlugins::default(),
-        CharacterPlugin,
+        PhysicsDebugPlugin::default(),
+        SpectatorPlugin,
         ShatterPlugin,
         AtmospherePlugin,
     ))
+    .insert_gizmo_config(
+        PhysicsGizmos {
+            hide_meshes: false,
+            ..default()
+        },
+        GizmoConfig {
+            enabled: false,
+            ..default()
+        },
+    )
     .add_observer(dynamic_shards)
     .add_observer(hide_glass)
-    .add_systems(Startup, setup_scene)
-    .add_systems(FixedUpdate, shatter_on_contact);
+    .add_systems(Startup, (setup_scene, setup_camera))
+    .add_systems(Update, click_shatter);
 
     app.run();
 }
@@ -100,6 +111,30 @@ fn setup_scene(
     ));
 }
 
+fn setup_camera(mut commands: Commands) {
+    commands.spawn((
+        Camera3d::default(),
+        AtmosphereCamera::default(),
+        Transform {
+            translation: Vec3::new(0.0, 2.0, 0.0),
+            ..default()
+        },
+        Camera {
+            hdr: true,
+            order: 0,
+            is_active: true,
+            ..default()
+        },
+        Tonemapping::TonyMcMapface,
+        Bloom::NATURAL,
+        Projection::from(PerspectiveProjection {
+            fov: 80.0_f32.to_radians(),
+            ..default()
+        }),
+        Spectator,
+    ));
+}
+
 // hook to make shards have a dynamic rigid body when created
 fn dynamic_shards(trigger: Trigger<OnAdd, Shard>, mut commands: Commands) {
     commands.entity(trigger.target()).insert(RigidBody::Dynamic);
@@ -110,27 +145,7 @@ fn hide_glass(trigger: Trigger<OnAdd, Shattered>, mut commands: Commands) {
     commands.entity(trigger.target()).insert(Visibility::Hidden);
 }
 
-// function to shatter glass when player collides with it
-// this is very ugly, consider using https://idanarye.github.io/bevy-tnua/avian3d/collision/contact_types/struct.Collisions.html
-fn shatter_on_contact(
-    mut collision_event_reader: EventReader<CollisionStarted>,
-    player: Single<Entity, With<Player>>,
-    glasses: Populated<Entity, With<Glass>>,
-    mut commands: Commands,
-) {
-    let player_entity = player.into_inner();
-    for CollisionStarted(entity1, entity2) in collision_event_reader.read() {
-        let entity1 = *entity1;
-        let entity2 = *entity2;
+fn click_shatter(camera: Single<&Transform, With<Spectator>>) {
+    let cam_transform = camera.into_inner();
 
-        if entity1 == player_entity {
-            if glasses.contains(entity2) {
-                commands.entity(entity2).insert(Shattered);
-            }
-        } else if entity2 == player_entity {
-            if glasses.contains(entity1) {
-                commands.entity(entity1).insert(Shattered);
-            }
-        }
-    }
 }

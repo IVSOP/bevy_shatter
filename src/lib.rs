@@ -1,5 +1,5 @@
 //! # **bevy_shatter**
-//! 
+//!
 //! Procedural glass shattering plugin for the [Bevy game engine](https://bevyengine.org/)
 //!
 //! **Note**: This plugin uses [avian3d](https://github.com/Jondolf/avian) for collider generation, but [rapier3d](https://rapier.rs/) integration should be trivial to add in the future
@@ -15,11 +15,11 @@
 //! Add the [`Shattered`] component to an entity that has [`Glass`], and glass shards will automatically be created.
 //!
 //! # Customizing behaviour
-//! 
+//!
 //! This plugin prioritizes user control instead of guessing what the user wants to do, at a cost of convenience for the simpler use cases. You are responsible, for example, for adding RigidBody::Dynamic to each shard of glass (if that's what you need), and you can customize the entities using hooks.
-//! 
+//!
 //! **Making the original glass entity hidden**
-//! 
+//!
 //! This plugin does not assume what you want to do with the original [`Glass`] entity. If you want it to be hidden when the glass shatters, this will have to be done manually by inserting [`Visibility::Hidden`].
 //!
 //! **Shards**

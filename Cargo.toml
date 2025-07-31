@@ -65,6 +65,7 @@ bevy = { version = "0.16.1", default-features = false, features = [
 ]}
 bevy_egui = "0.35.1"
 bevy_atmosphere = "0.13.0"
+bevy_spectator = "0.8.0"
 
 [profile.dev]
 opt-level = 1

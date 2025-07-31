@@ -1229,8 +1229,18 @@ dependencies = [
  "bevy-tnua-avian3d",
  "bevy_atmosphere",
  "bevy_egui",
+ "bevy_spectator",
  "fastrand",
  "voronator",
+]
+
+[[package]]
+name = "bevy_spectator"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0466dc0cd4d27c3587cecf8254a88f753d7842ac918e47de2ecd8d31ad47dcd8"
+dependencies = [
+ "bevy",
 ]
 
 [[package]]
