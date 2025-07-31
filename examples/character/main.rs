@@ -88,11 +88,17 @@ fn setup_scene(
     });
 
     // glass
+    let width = 20.0;
+    let height = 5.0;
+    let thickness = 0.1;
     commands.spawn((
         AutoGlass {
+            width,
+            height,
+            thickness,
             translation: Vec3::new(0.0, 3.0, -10.0),
             rotation: Quat::IDENTITY,
-            glass: Glass::new_with_density(20.0, 5.0, 0.1, 2.0),
+            glass: Glass::new_with_density(width, height, 2.0),
         },
         MeshMaterial3d(glass_material.clone()),
         RigidBody::Static,

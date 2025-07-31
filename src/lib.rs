@@ -8,7 +8,7 @@
 //!
 //! **Creating glass**
 //!
-//! Add the [`Glass`] component to an entity. A helper is available in [`AutoGlass`] to add other needed components automatically, such as a mesh and a transform with the correct scale.
+//! Add the [`Glass`] component to an entity, using the [`Transform::scale`] as width, height and thickness. A helper is available in [`AutoGlass`] to add other needed components automatically, such as a mesh and a transform with the correct scale.
 //!
 //! **Shattering glass**
 //!
@@ -75,13 +75,11 @@ impl Plugin for ShatterPlugin {
 }
 
 // TODO: store num_cell_points as floats??
-/// The component that marks an entity as glass that can be shattered.
-/// See [`AutoGlass`] for a helper to automate spawning glass entities with all necessary components
+/// The component that marks an entity as glass that can be shattered. No other components are added to the entity, so you should add a material, mesh, etc. Feel free to take the mesh from [`GlassMesh`]. See [`AutoGlass`] for a quick way to spawn glass with some default components.
+///
+/// **Note:** the [`Transform::scale`] will be used to get the width (x), height (y) and thickness (z) of the glass.
 #[derive(Component, Clone, Debug)]
 pub struct Glass {
-    pub width: f32,
-    pub height: f32,
-    pub thickness: f32,
     /// The number of cell points to be used along the width and the height. Either passed in manually or through [`Glass::new_with_density`].
     /// Increasing this number means that more shattered glass pieces will be spawned, with smaller sizes,
     /// increasing computational cost
@@ -91,26 +89,18 @@ pub struct Glass {
 impl Glass {
     /// Generates glass using a density value (number of cells per unit of distance),
     /// automatically computing the number of cells
-    pub fn new_with_density(width: f32, height: f32, thickness: f32, cells_per_unit: f32) -> Self {
+    pub fn new_with_density(width: f32, height: f32, cells_per_unit: f32) -> Self {
         let cells_x: u32 = (cells_per_unit * width).floor() as u32;
         let cells_y: u32 = (cells_per_unit * height).floor() as u32;
 
         Self {
-            width,
-            height,
-            thickness,
             num_cell_points: UVec2::new(cells_x, cells_y),
         }
     }
 
     /// Generates glass using an XY grid for the number of cells
-    pub fn new(width: f32, height: f32, thickness: f32, num_cell_points: UVec2) -> Self {
-        Self {
-            width,
-            height,
-            thickness,
-            num_cell_points,
-        }
+    pub fn new(num_cell_points: UVec2) -> Self {
+        Self { num_cell_points }
     }
 
     // TODO: how to generate a lot of random numbers as fast as possible?
@@ -131,9 +121,13 @@ impl Glass {
         // FIX: also consider the case where it is not possible to conserve this distance, but at that point it's mostly user error
         const EPSILON: f32 = 0.001;
 
+        let width = glass_transf.scale.x;
+        let height = glass_transf.scale.y;
+        let thickness = glass_transf.scale.z;
+
         // the full cell width, used to determine the center of each cell
-        let cell_width: f32 = self.width / self.num_cell_points.x as f32;
-        let cell_height: f32 = self.height / self.num_cell_points.y as f32;
+        let cell_width: f32 = width / self.num_cell_points.x as f32;
+        let cell_height: f32 = height / self.num_cell_points.y as f32;
 
         // the max offset a point can be in from the center of the cell
         let cell_offset = Vec2::new((cell_width / 2.0) - EPSILON, (cell_height / 2.0) - EPSILON);
@@ -160,12 +154,9 @@ impl Glass {
             }
         }
 
-        let voronoi_diagram = VoronoiDiagram::<Point>::from_tuple(
-            &(0., 0.),
-            &(self.width as f64, self.height as f64),
-            &cells,
-        )
-        .expect("Error generating Voronoi diagram");
+        let voronoi_diagram =
+            VoronoiDiagram::<Point>::from_tuple(&(0., 0.), &(width as f64, height as f64), &cells)
+                .expect("Error generating Voronoi diagram");
 
         // to allow shard baking, this is now done manually by the user
         // // mark original entity as invisible
@@ -174,9 +165,7 @@ impl Glass {
         // it is (much) easier to offset the vertices themselves than the transform,
         // so every shard uses this transform which corresponds to the bottom left of the glass
         let shard_transform = glass_transf.with_scale(Vec3::ONE)
-            * Transform::from_translation(
-                Vec3::new(-self.width, -self.height, self.thickness) / 2.0,
-            );
+            * Transform::from_translation(Vec3::new(-width, -height, thickness) / 2.0);
 
         // iterate voronoi cells and triangulate them
         // also need to extrude since we want 3D mesh
@@ -205,7 +194,7 @@ impl Glass {
             // Extruded vertices as the top (z = -thickness)
             let mut top_verts: Vec<Vec3> = points
                 .iter()
-                .map(|point| Vec3::new(point.x as f32, point.y as f32, -self.thickness))
+                .map(|point| Vec3::new(point.x as f32, point.y as f32, -thickness))
                 .collect();
             verts.append(&mut top_verts);
 
@@ -328,7 +317,7 @@ pub struct Shard {
 ///
 /// Added components:
 /// - [`Glass`]
-/// - [`Transform`]
+/// - [`Transform`], with the correct scale
 /// - [`Mesh3d`], as a cuboid
 /// - [`Collider`]
 ///
@@ -338,6 +327,9 @@ pub struct Shard {
 #[derive(Component, Debug)]
 pub struct AutoGlass {
     pub glass: Glass,
+    pub width: f32,
+    pub height: f32,
+    pub thickness: f32,
     pub translation: Vec3,
     pub rotation: Quat,
 }
@@ -346,7 +338,7 @@ pub struct AutoGlass {
 struct GlassCollider(Collider);
 
 #[derive(Resource)]
-struct GlassMesh(Handle<Mesh>);
+pub struct GlassMesh(Handle<Mesh>);
 
 /// Add this component to an entity with the [`Glass`] component to shatter it,
 /// which creates all the glass shards.
@@ -371,7 +363,7 @@ fn autoglass(
         Transform {
             translation: ag.translation,
             rotation: ag.rotation,
-            scale: Vec3::new(glass.width, glass.height, glass.thickness),
+            scale: Vec3::new(ag.width, ag.height, ag.thickness),
         },
         Mesh3d(mesh.0.clone()),
         collider.0.clone(), // TODO: test if this is faster than recomputing the collider
