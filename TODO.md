@@ -1,4 +1,4 @@
-# API limitations
+# API limitations / missing features
 
 - [ ] Allow optionally spawning the shards at the same time as the glass. The behaviour of Shattered will change, and the user needs to be able to have another hook for this
 - [ ] Do not assume the material is `MeshMaterial3d(Handle<StandardMaterial>)`
@@ -6,8 +6,13 @@
 - [ ] Every shard's mesh being different means instancing is not possible. Can this be improved?
 - [ ] Rapier integration
 - [ ] Allow LOD, where less cells are used if the glass is far away
+- [ ] The hooks I use in the character example will probably be very common, should be available in the lib for convenience
 
 # Issues
 
 - [ ] Glass can blink for a couple of frames, where it has already become invisible but the shards are not yet visible
-- [ ] use bevy_rand instead of fastrand, or make it clear how to compile to wasm
+
+# Bevy integration
+
+- [ ] Use bevy_rand instead of fastrand, or make it clear how to compile to wasm (the wasm feature)
+- [ ] Bevy's [extrusion](https://docs.rs/bevy/latest/bevy/render/mesh/trait.Extrudable.html) used to not cover my use case, see if it works now

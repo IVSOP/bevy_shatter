@@ -44,6 +44,7 @@ fn main() {
         AtmospherePlugin,
     ))
     .add_observer(dynamic_shards)
+    .add_observer(hide_glass)
     .add_systems(Startup, setup_scene)
     .add_systems(FixedUpdate, shatter_on_contact);
 
@@ -99,7 +100,7 @@ fn setup_scene(
     ));
 }
 
-// hook to make shards have a dynamic rigid body
+// hook to make shards have a dynamic rigid body when created
 fn dynamic_shards(
     trigger: Trigger<OnAdd, Shard>,
     mut commands: Commands,
@@ -107,7 +108,15 @@ fn dynamic_shards(
     commands.entity(trigger.target()).insert(RigidBody::Dynamic);
 }
 
-// shatter glass when player collides with it
+// hook to hide the glass when it is shattered
+fn hide_glass(
+    trigger: Trigger<OnAdd, Shattered>,
+    mut commands: Commands,
+) {
+    commands.entity(trigger.target()).insert(Visibility::Hidden);
+}
+
+// function to shatter glass when player collides with it
 // this is very ugly, consider using https://idanarye.github.io/bevy-tnua/avian3d/collision/contact_types/struct.Collisions.html
 fn shatter_on_contact(
     mut collision_event_reader: EventReader<CollisionStarted>,
