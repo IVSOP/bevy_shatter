@@ -45,10 +45,14 @@ fn main() {
         AtmospherePlugin,
     ))
     .insert_gizmo_config(
-        PhysicsGizmos {
-            hide_meshes: false,
+        PhysicsGizmos::default(),
+        GizmoConfig {
+            enabled: false,
             ..default()
         },
+    )
+    .insert_gizmo_config(
+        DefaultGizmoConfigGroup::default(),
         GizmoConfig {
             enabled: false,
             ..default()
@@ -148,9 +152,36 @@ fn dynamic_shards(trigger: Trigger<OnAdd, Shard>, mut commands: Commands) {
 
 // hook to hide the glass when it is shattered
 fn hide_glass(trigger: Trigger<OnAdd, Shattered>, mut commands: Commands) {
-    commands.entity(trigger.target()).insert(Visibility::Hidden);
+    // remove the rigid body too otherwise the debug physics plugin makes this visible again for some reason
+    commands.entity(trigger.target()).remove::<RigidBody>().insert(Visibility::Hidden);
 }
 
-fn click_shatter(camera: Single<&Transform, With<Spectator>>) {
+fn click_shatter(
+    camera: Single<&Transform, With<Spectator>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    mut commands: Commands,
+    glasses: Populated<Entity, (With<Glass>, Without<Shattered>)>,
+    spatial_query: SpatialQuery,
+) {
     let cam_transform = camera.into_inner();
+
+    if mouse.just_pressed(MouseButton::Right) {
+        // ray cast to check if intersecting a glass
+
+        // TODO: use query filter instead of checking if it is a glass,
+        // got lazy since I would have to add masks to all other entities in this example
+        if let Some(hit) = spatial_query.cast_ray(
+            cam_transform.translation,
+            cam_transform.forward(),
+            1000.0,
+            false,
+            &SpatialQueryFilter::default(),
+        ) {
+            if let Ok(glass_entity) = glasses.get(hit.entity) {
+                commands.entity(glass_entity).insert(Shattered);
+
+                // need a whole lot of extra logic here, copy bevy tech demo
+            }
+        }
+    }
 }

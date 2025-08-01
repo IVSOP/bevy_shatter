@@ -11,10 +11,14 @@
 # Issues
 
 - [ ] Glass can blink for a couple of frames, where it has already become invisible but the shards are not yet visible
-- [ ] In the click example, spectator plugin hides the mouse even when egui is clicked
+- [ ] In the click example, spectator plugin hides the mouse even when egui is clicked. They have a PR for this but it is old and was never merged
 
 # Bevy integration
 
 - [ ] Use bevy_rand instead of fastrand, or make it clear how to compile to wasm (the wasm feature)
 - [ ] Bevy's [extrusion](https://docs.rs/bevy/latest/bevy/render/mesh/trait.Extrudable.html) used to not cover my use case, see if it works now
 - [ ] Use bevy picking in the click example??
+
+# Example improvement
+
+- [ ] click: click_shatter should use a filter, see the comment

@@ -31,6 +31,7 @@
 //!
 //! Shards and their Glass are related using [`ShardOf`] and [`Shards`]. You can use this to delete all the shards belonging to a glass, make all the shards have the same material as their glass, etc.
 //!
+//!
 //! # Examples
 //!
 //! See the [`examples/`](https://github.com/ivsop/bevy_shatter) folder.
@@ -181,110 +182,140 @@ impl Glass {
             let cell_points: Vec<(f64, f64)> =
                 points.iter().map(|point| (point.x, point.y)).collect();
 
-            let (delaunay, _) = triangulate_from_tuple::<Point>(&cell_points)
-                .expect("Error running delaunay triangulation on the cell");
+            // FIX: I have no idea what might cause this to return None, but I'll just ignore it for now
+            if let Some((delaunay, _)) = triangulate_from_tuple::<Point>(&cell_points) {
+                // .expect("Error running delaunay triangulation on the cell");
 
-            // Original vertices are used as the bottom (z = 0)
-            let mut verts: Vec<Vec3> = points
-                .iter()
-                .map(|point| Vec3::new(point.x as f32, point.y as f32, 0.0))
-                .collect();
-            let n = verts.len();
+                // Original vertices are used as the bottom (z = 0)
+                let mut verts: Vec<Vec3> = points
+                    .iter()
+                    .map(|point| Vec3::new(point.x as f32, point.y as f32, 0.0))
+                    .collect();
+                let n = verts.len();
 
-            // Extruded vertices as the top (z = -thickness)
-            let mut top_verts: Vec<Vec3> = points
-                .iter()
-                .map(|point| Vec3::new(point.x as f32, point.y as f32, -thickness))
-                .collect();
-            verts.append(&mut top_verts);
+                // Extruded vertices as the top (z = -thickness)
+                let mut top_verts: Vec<Vec3> = points
+                    .iter()
+                    .map(|point| Vec3::new(point.x as f32, point.y as f32, -thickness))
+                    .collect();
+                verts.append(&mut top_verts);
 
-            // now we have to make edges to join the bottom and top vertices.
-            // from here on this was mostly made by grok as I couldn't find any resources on this, and
-            // making the triangles have the exact order you need them to have is hard
-            let mut edge_count: HashMap<(usize, usize), i32> = HashMap::new();
-            for triangle in delaunay.triangles.chunks(3) {
-                let edges = [
-                    (triangle[0], triangle[1]),
-                    (triangle[1], triangle[2]),
-                    (triangle[2], triangle[0]),
-                ];
-                for &(a, b) in edges.iter() {
-                    *edge_count.entry((a, b)).or_insert(0) += 1;
-                    *edge_count.entry((b, a)).or_insert(0) -= 1;
+                // now we have to make edges to join the bottom and top vertices.
+                // from here on this was mostly made by grok as I couldn't find any resources on this, and
+                // making the triangles have the exact order you need them to have is hard
+                let mut edge_count: HashMap<(usize, usize), i32> = HashMap::new();
+                for triangle in delaunay.triangles.chunks(3) {
+                    let edges = [
+                        (triangle[0], triangle[1]),
+                        (triangle[1], triangle[2]),
+                        (triangle[2], triangle[0]),
+                    ];
+                    for &(a, b) in edges.iter() {
+                        *edge_count.entry((a, b)).or_insert(0) += 1;
+                        *edge_count.entry((b, a)).or_insert(0) -= 1;
+                    }
                 }
-            }
 
-            // Only keep edges that appear once (boundary edges)
-            let boundary_edges: Vec<(usize, usize)> = edge_count
-                .iter()
-                .filter(|&(&(_, _), &count)| count == 1)
-                .map(|(&(a, b), _)| (a, b))
-                .collect();
+                // Only keep edges that appear once (boundary edges)
+                let boundary_edges: Vec<(usize, usize)> = edge_count
+                    .iter()
+                    .filter(|&(&(_, _), &count)| count == 1)
+                    .map(|(&(a, b), _)| (a, b))
+                    .collect();
 
-            let mut indices: Vec<u32> = Vec::new();
+                let mut indices: Vec<u32> = Vec::new();
 
-            // Bottom faces (reversed for outward facing)
-            for triangle in delaunay.triangles.chunks(3) {
-                indices.extend_from_slice(&[
-                    triangle[2] as u32,
-                    triangle[1] as u32,
-                    triangle[0] as u32,
-                ]);
-            }
+                // Bottom faces (reversed for outward facing)
+                for triangle in delaunay.triangles.chunks(3) {
+                    indices.extend_from_slice(&[
+                        triangle[2] as u32,
+                        triangle[1] as u32,
+                        triangle[0] as u32,
+                    ]);
+                }
 
-            // Top faces
-            for triangle in delaunay.triangles.chunks(3) {
-                indices.extend_from_slice(&[
-                    (triangle[0] + n) as u32,
-                    (triangle[1] + n) as u32,
-                    (triangle[2] + n) as u32,
-                ]);
-            }
+                // Top faces
+                for triangle in delaunay.triangles.chunks(3) {
+                    indices.extend_from_slice(&[
+                        (triangle[0] + n) as u32,
+                        (triangle[1] + n) as u32,
+                        (triangle[2] + n) as u32,
+                    ]);
+                }
 
-            // Side faces with proper winding
-            // TODO: calculate normals here??
-            for &(a, b) in boundary_edges.iter() {
-                indices.extend_from_slice(&[
-                    a as u32,
-                    b as u32,
-                    (b + n) as u32,
-                    (b + n) as u32,
-                    (a + n) as u32,
-                    a as u32,
-                ]);
-            }
+                // Side faces with proper winding
+                // TODO: calculate normals here??
+                for &(a, b) in boundary_edges.iter() {
+                    indices.extend_from_slice(&[
+                        a as u32,
+                        b as u32,
+                        (b + n) as u32,
+                        (b + n) as u32,
+                        (a + n) as u32,
+                        a as u32,
+                    ]);
+                }
 
-            // Create the mesh
-            // I assume I will never need the mesh on the CPU again
-            let mut mesh = Mesh::new(
-                PrimitiveTopology::TriangleList,
-                RenderAssetUsages::RENDER_WORLD,
-            )
-            .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, verts)
-            // .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
-            .with_inserted_indices(Indices::U32(indices));
+                // Create the mesh
+                // I assume I will never need the mesh on the CPU again
+                let mut mesh = Mesh::new(
+                    PrimitiveTopology::TriangleList,
+                    RenderAssetUsages::RENDER_WORLD,
+                )
+                .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, verts)
+                // .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+                .with_inserted_indices(Indices::U32(indices));
 
-            // collider
-            let collider =
+                // collider
+                let collider =
                 // Collider::trimesh_from_mesh(&mesh) // this has abysmal performance for some reason, but works fine in rapier
                 Collider::convex_hull_from_mesh(&mesh) // this is probably slow to create but is the only way I can get stable performance with avian
                 .expect("Could not make trimesh out of the extrusion mesh for a cell");
 
-            // add the normals. this is VERY inneficient but whatever, had many issues doing it manually
-            // also, should this be done before collider??
-            mesh = mesh.with_duplicated_vertices().with_computed_flat_normals();
+                // add the normals. this is VERY inneficient but whatever, had many issues doing it manually
+                // also, should this be done before collider??
+                mesh = mesh.with_duplicated_vertices().with_computed_flat_normals();
 
-            // spawn the glass shard
-            commands.spawn((
-                shard_transform,
-                Mesh3d(meshes.add(mesh)),
-                MeshMaterial3d(glass_material.clone()),
-                collider,
-                ShardOf(glass_entity),
-                Shard {
-                    pos: Vec2::new(shard_center.0 as f32, shard_center.1 as f32),
-                },
-            ));
+                // spawn the glass shard
+                commands.spawn((
+                    shard_transform,
+                    Mesh3d(meshes.add(mesh)),
+                    MeshMaterial3d(glass_material.clone()),
+                    collider,
+                    ShardOf(glass_entity),
+                    Shard {
+                        pos: Vec2::new(shard_center.0 as f32, shard_center.1 as f32),
+                    },
+                ));
+            }
+        }
+    }
+
+    /// Projects a point onto the glass.
+    /// Faster than ray casting since we know glass is just an extruded plane.
+    /// Also takes thickness into acount.
+    ///
+    /// Useful for computing where an object (like a character) impacted against the glass by just using its current position, but your physics engine might already provide this.
+    pub fn project_to_glass(&self, glass_transf: &Transform, origin: Vec3) -> Vec3 {
+        let thickness = glass_transf.scale.z;
+
+        // make a plane representing the glass at its 'core', not at any edge
+        // project a point onto it
+        // depending on if viewing glass from the front or back, subtract or add the thickness of the glass (in this case half of it)
+
+        let glass_forward = glass_transf.forward().as_vec3();
+        let isometry = Isometry3d::from_translation(glass_transf.translation);
+        let plane = InfinitePlane3d::new(glass_forward);
+
+        let proj = plane.project_point(isometry, origin);
+        let other_to_proj = proj - origin;
+
+        if glass_forward.dot(other_to_proj) > 0.0 {
+            // the impact was in the same direction as the forward vector
+            proj + (glass_forward * (thickness / 2.0))
+        } else {
+            // the impact was in the reverse direction as the forward vector
+            proj + (-glass_forward * (thickness / 2.0))
         }
     }
 }
@@ -304,7 +335,8 @@ pub struct Shards(Vec<Entity>);
 /// Every glass shard has this component, so you can use it with a hook to customize the shards.
 #[derive(Component)]
 pub struct Shard {
-    /// Position in the glass, relative to the bottom left point
+    /// Position in the glass, relative to the bottom left point.
+    /// Values are negative sometimes, I have no idea how or why
     pub pos: Vec2,
 }
 
@@ -319,7 +351,7 @@ pub struct Shard {
 /// - [`Glass`]
 /// - [`Transform`], with the correct scale
 /// - [`Mesh3d`], as a cuboid
-/// - [`Collider`]
+/// - [`Collider`], as a cuboid
 ///
 /// Note: no material or rigid body are added.
 /// You can completely ignore this and do things manually for more control. Keep in mind this function
@@ -346,6 +378,8 @@ pub struct GlassMesh(Handle<Mesh>);
 pub struct Shattered;
 
 // The entire thing is cursed but works
+// FIX: can't I read the AutoGlass struct straigt from the trigger???????????? that way I don't need the query or the unwrap
+/// Hook to add [`AutoGlass`] functionality when it is added to an entity
 fn autoglass(
     trigger: Trigger<OnAdd, AutoGlass>,
     mut commands: Commands,
@@ -372,6 +406,7 @@ fn autoglass(
     entitycmd.remove::<AutoGlass>();
 }
 
+/// Hook to spawn glass shards when [`Shattered`] is added to a Glass entity
 fn shatter_hook(
     trigger: Trigger<OnAdd, Shattered>,
     glasses: Populated<(&Glass, &Transform, &MeshMaterial3d<StandardMaterial>)>,
@@ -380,7 +415,10 @@ fn shatter_hook(
 ) {
     let entity = trigger.target();
 
-    let (glass, transform, material) = glasses.get(entity).unwrap();
+    let (glass, transform, material) = glasses
+        .get(entity)
+        .expect("Trying to shatter an entity without Glass");
+
     glass.shatter(
         entity,
         transform,
