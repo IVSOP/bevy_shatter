@@ -23,6 +23,7 @@
 
 - [ ] click: click_shatter should use a filter, see the comment
 - [ ] more comments on functions
+- [ ] add physics drawing to the character example
 
 # Math is hard
 
