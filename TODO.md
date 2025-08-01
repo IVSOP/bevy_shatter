@@ -19,6 +19,15 @@
 - [ ] Bevy's [extrusion](https://docs.rs/bevy/latest/bevy/render/mesh/trait.Extrudable.html) used to not cover my use case, see if it works now
 - [ ] Use bevy picking in the click example??
 
-# Example improvement
+# Examples
 
 - [ ] click: click_shatter should use a filter, see the comment
+- [ ] more comments on functions
+
+# Math is hard
+
+- [ ] maybe project_to_glass functions could already return the Vec2 relative position
+
+# Other
+
+See the TODO:, FIX:, etc  that are spread throughout the code

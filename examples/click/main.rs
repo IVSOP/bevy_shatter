@@ -58,10 +58,10 @@ fn main() {
             ..default()
         },
     )
-    .add_observer(dynamic_shards)
+    .add_observer(static_shards)
     .add_observer(hide_glass)
     .add_systems(Startup, (setup_scene, setup_camera))
-    .add_systems(Update, click_shatter);
+    .add_systems(Update, (click_shatter, drop_shards));
 
     app.run();
 }
@@ -143,44 +143,105 @@ fn setup_camera(mut commands: Commands) {
         }),
         Spectator,
     ));
+
+    // crosshair
+    commands
+        .spawn((Node {
+            display: Display::Flex,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            ..default()
+        },))
+        .with_child((
+            Node {
+                width: Val::Px(8.0),
+                height: Val::Px(8.0),
+                ..default()
+            },
+            ImageNode {
+                color: Color::LinearRgba(LinearRgba::rgb(2.0, 0.0, 0.0)),
+                image: Handle::<Image>::default(),
+                ..default()
+            },
+        ));
 }
 
-// hook to make shards have a dynamic rigid body when created
-fn dynamic_shards(trigger: Trigger<OnAdd, Shard>, mut commands: Commands) {
-    commands.entity(trigger.target()).insert(RigidBody::Dynamic);
+// hook to make shards have a static rigid body when created
+// I also make them have larger gravity for the effect to be more noticeable
+fn static_shards(trigger: Trigger<OnAdd, Shard>, mut commands: Commands) {
+    commands
+        .entity(trigger.target())
+        .insert(RigidBody::Static)
+        .insert(GravityScale(2.0));
+}
+
+// helper to store where the glass was hit, relative to the bottom left of the glass
+#[derive(Component)]
+pub struct GlassHitPoint(Vec2);
+
+// make shards fall if close to the hit point
+// this could be improved to make all shards fall at different times, depending on how far
+// away they are, making a radial pattern
+// but this would make the example even more complex than it already is
+fn drop_shards(
+    shattered_glasses: Populated<(&GlassHitPoint, &Shards), With<Glass>>,
+    mut shards: Query<(&Shard, &mut RigidBody)>,
+) {
+    for (hit, shard_children) in shattered_glasses.iter() {
+        for shard in shard_children.iter() {
+            // the shard will obviously belong to the shards query
+            let (shard_info, mut shard_body) = shards.get_mut(shard).unwrap();
+
+            let distance = shard_info.pos.distance(hit.0);
+            if distance < 2.0 {
+                *shard_body = RigidBody::Dynamic;
+            }
+        }
+    }
 }
 
 // hook to hide the glass when it is shattered
 fn hide_glass(trigger: Trigger<OnAdd, Shattered>, mut commands: Commands) {
     // remove the rigid body too otherwise the debug physics plugin makes this visible again for some reason
-    commands.entity(trigger.target()).remove::<RigidBody>().insert(Visibility::Hidden);
+    commands
+        .entity(trigger.target())
+        .remove::<RigidBody>()
+        .insert(Visibility::Hidden);
 }
 
 fn click_shatter(
     camera: Single<&Transform, With<Spectator>>,
     mouse: Res<ButtonInput<MouseButton>>,
     mut commands: Commands,
-    glasses: Populated<Entity, (With<Glass>, Without<Shattered>)>,
+    glasses: Populated<(Entity, &Transform, &Glass), Without<Shattered>>,
     spatial_query: SpatialQuery,
 ) {
-    let cam_transform = camera.into_inner();
-
     if mouse.just_pressed(MouseButton::Right) {
+        let cam_transform = camera.into_inner();
+        let cam_forward = cam_transform.forward();
         // ray cast to check if intersecting a glass
 
         // TODO: use query filter instead of checking if it is a glass,
         // got lazy since I would have to add masks to all other entities in this example
         if let Some(hit) = spatial_query.cast_ray(
             cam_transform.translation,
-            cam_transform.forward(),
+            cam_forward,
             1000.0,
             false,
             &SpatialQueryFilter::default(),
         ) {
-            if let Ok(glass_entity) = glasses.get(hit.entity) {
-                commands.entity(glass_entity).insert(Shattered);
+            if let Ok((glass_entity, glass_transf, glass)) = glasses.get(hit.entity) {
+                let hit_position =
+                    cam_transform.translation + (cam_forward.as_vec3() * hit.distance);
 
-                // need a whole lot of extra logic here, copy bevy tech demo
+                let relative_break_pos = glass.project_to_glass(glass_transf, hit_position);
+
+                commands
+                    .entity(glass_entity)
+                    .insert(Shattered)
+                    .insert(GlassHitPoint(relative_break_pos));
             }
         }
     }

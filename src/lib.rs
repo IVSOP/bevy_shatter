@@ -70,7 +70,7 @@ impl Plugin for ShatterPlugin {
 
         app.insert_resource(GlassMesh(glass_mesh))
             .insert_resource(GlassCollider(glass_collider))
-            .add_observer(autoglass)
+            .add_observer(autoglass_hook)
             .add_observer(shatter_hook);
     }
 }
@@ -287,36 +287,40 @@ impl Glass {
                         pos: Vec2::new(shard_center.0 as f32, shard_center.1 as f32),
                     },
                 ));
+            } else {
+                // delaunay failed
+                warn!("Failed to triangulate a glass shard, skipping it");
             }
         }
     }
 
-    /// Projects a point onto the glass.
-    /// Faster than ray casting since we know glass is just an extruded plane.
-    /// Also takes thickness into acount.
-    ///
-    /// Useful for computing where an object (like a character) impacted against the glass by just using its current position, but your physics engine might already provide this.
-    pub fn project_to_glass(&self, glass_transf: &Transform, origin: Vec3) -> Vec3 {
-        let thickness = glass_transf.scale.z;
+    /// Projects a point onto the glass, returning a position that is relative to the bottom left.
+    /// This is useful since [`Shard`] also uses a relative Vec2 position
+    pub fn project_to_glass(&self, glass_transf: &Transform, point: Vec3) -> Vec2 {
+        let up = glass_transf.up().as_vec3();
+        let right = glass_transf.right().as_vec3();
+        let half_width = glass_transf.scale.x / 2.0;
+        let half_height = glass_transf.scale.y / 2.0;
 
-        // make a plane representing the glass at its 'core', not at any edge
-        // project a point onto it
-        // depending on if viewing glass from the front or back, subtract or add the thickness of the glass (in this case half of it)
+        let bottom_left = glass_transf.translation - (right * half_width) - (up * half_height);
 
-        let glass_forward = glass_transf.forward().as_vec3();
-        let isometry = Isometry3d::from_translation(glass_transf.translation);
-        let plane = InfinitePlane3d::new(glass_forward);
+        // I make two planes, with an origin at the bottom left of the glass
+        // one of them is pointing to the right, the other is pointing up
+        // this way, for example, by projecting the point to the bottom plane that is pointing up,
+        // I can get how far the point has moved along the width of the glass
+        let isometry = Isometry3d::from_translation(bottom_left);
+        let left_plane = InfinitePlane3d::new(right);
+        let bottom_plane = InfinitePlane3d::new(up);
 
-        let proj = plane.project_point(isometry, origin);
-        let other_to_proj = proj - origin;
+        let left_proj = left_plane.project_point(isometry, point);
+        let bottom_proj = bottom_plane.project_point(isometry, point);
 
-        if glass_forward.dot(other_to_proj) > 0.0 {
-            // the impact was in the same direction as the forward vector
-            proj + (glass_forward * (thickness / 2.0))
-        } else {
-            // the impact was in the reverse direction as the forward vector
-            proj + (-glass_forward * (thickness / 2.0))
-        }
+        Vec2::new(
+            // distance from left to point
+            left_proj.distance(point),
+            // distance from bottom to point
+            bottom_proj.distance(point),
+        )
     }
 }
 
@@ -380,7 +384,7 @@ pub struct Shattered;
 // The entire thing is cursed but works
 // FIX: can't I read the AutoGlass struct straigt from the trigger???????????? that way I don't need the query or the unwrap
 /// Hook to add [`AutoGlass`] functionality when it is added to an entity
-fn autoglass(
+fn autoglass_hook(
     trigger: Trigger<OnAdd, AutoGlass>,
     mut commands: Commands,
     collider: Res<GlassCollider>,
