@@ -5,10 +5,24 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 authors = ["Ivan Ribeiro ivan.ribeiro09s@gmail.com"]
 repository = "https://github.com/ivsop/bevy_shatter"
+homepage = "https://github.com/ivsop/bevy_shatter"
+documentation = "https://docs.rs/bevy_shatter"
 categories = ["game-development"]
 keywords = ["bevy", "gamedev", "glass", "shatter"]
 description = "A bevy plugin to allow simulating shattered glass"
 readme = "README.md"
+exclude = [
+  "examples/",
+  "videos/",
+  ".github",
+  "rustfmt.toml",
+  "clippy.toml",
+  "TODO.md",
+  "README.md",
+  "clippy.toml",
+  "rustfmt.toml",
+  "Cargo.lock"
+]
 
 [dependencies]
 avian3d = "0.3.1"
