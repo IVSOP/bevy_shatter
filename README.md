@@ -8,6 +8,10 @@ Procedural glass shattering plugin for the [Bevy game engine](https://bevyengine
 
 # Usage
 
+**Plugin**
+ 
+Add the ShatterPlugin to register the needed hooks and resources.
+
 **Creating glass**
 
 Add the Glass component to an entity. A helper is available in AutoGlass to add other needed components automatically, such as a mesh and a transform with the correct scale.
@@ -36,7 +40,7 @@ Shards and their Glass are related using ShardOf and Shards. You can use this to
 
 # Examples
 
-See the [`examples/`](https://github.com/ivsop/bevy_shatter) folder.
+See the [`examples/`](https://github.com/IVSOP/bevy_shatter/tree/main/examples) folder.
 
 # Compatibility
 
@@ -47,6 +51,8 @@ See the [`examples/`](https://github.com/ivsop/bevy_shatter) folder.
 # How it works
 
 Currently, the glass is broken into cells using a voronoi diagram. These cells are then extruded to 3D, creating a shard.
+
+Each cell's position is chosen by dividing the glass into a grid, to ensure they are all roughly the same size, and then picking random points within each cell of the grid.
 
 # Contributing
 

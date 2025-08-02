@@ -6,6 +6,10 @@
 //!
 //! # Usage
 //!
+//! **Plugin**
+//!
+//! Add the [`ShatterPlugin`] to register the needed hooks and resources.
+//!
 //! **Creating glass**
 //!
 //! Add the [`Glass`] component to an entity, using the [`Transform::scale`] as width, height and thickness. A helper is available in [`AutoGlass`] to add other needed components automatically, such as a mesh and a transform with the correct scale.
@@ -16,7 +20,7 @@
 //!
 //! # Customizing behaviour
 //!
-//! This plugin prioritizes user control instead of guessing what the user wants to do, at a cost of convenience for the simpler use cases. You are responsible, for example, for adding RigidBody::Dynamic to each shard of glass (if that's what you need), and you can customize the entities using hooks.
+//! This plugin prioritizes user control instead of guessing what the user wants to do, at a cost of convenience for the simpler use cases. You are responsible, for example, for adding [`RigidBody::Dynamic`] to each shard of glass (if that's what you need), and you can customize the entities using hooks.
 //!
 //! **Making the original glass entity hidden**
 //!
@@ -34,7 +38,7 @@
 //!
 //! # Examples
 //!
-//! See the [`examples/`](https://github.com/ivsop/bevy_shatter) folder.
+//! See the [`examples/`](https://github.com/IVSOP/bevy_shatter/tree/main/examples) folder.
 //!
 //! # Compatibility
 //!
@@ -45,6 +49,8 @@
 //! # How it works
 //!
 //! Currently, the glass is broken into cells using a voronoi diagram. These cells are then extruded to 3D, creating a shard.
+//!
+//! Each cell's position is chosen by dividing the glass into a grid, to ensure they are all roughly the same size, and then picking random points within each cell of the grid.
 //!
 //! # Contributing
 //!
@@ -59,21 +65,11 @@ use bevy::{
 };
 use voronator::{delaunator::*, VoronoiDiagram};
 
-/// This plugin must be added for everything to work properly
-pub struct ShatterPlugin;
+mod autoglass;
+pub use autoglass::*;
 
-impl Plugin for ShatterPlugin {
-    fn build(&self, app: &mut App) {
-        let mut meshes = app.world_mut().resource_mut::<Assets<Mesh>>();
-        let glass_mesh = meshes.add(Cuboid::new(1.0, 1.0, 1.0));
-        let glass_collider = Collider::cuboid(1.0, 1.0, 1.0);
-
-        app.insert_resource(GlassMesh(glass_mesh))
-            .insert_resource(GlassCollider(glass_collider))
-            .add_observer(autoglass_hook)
-            .add_observer(shatter_hook);
-    }
-}
+mod plugin;
+pub use plugin::*;
 
 // TODO: store num_cell_points as floats??
 /// The component that marks an entity as glass that can be shattered. No other components are added to the entity, so you should add a material, mesh, etc. Feel free to take the mesh from [`GlassMesh`]. See [`AutoGlass`] for a quick way to spawn glass with some default components.
@@ -178,8 +174,7 @@ impl Glass {
             let shard_center = cells[cell_id];
 
             // if the cell has less than 3 points it can't be triangulated, this is extremely rare, have to find out why it happens
-            if let Some(delaunay) = triangulate::<Point>(&points) {
-
+            if let Some(delaunay) = triangulate::<Point>(points) {
                 // Original vertices are used as the top (z = 0)
                 let mut verts: Vec<Vec3> = points
                     .iter()
@@ -318,14 +313,14 @@ impl Glass {
     }
 }
 
-/// Glass shards are children of a glass, through this relationship.
+/// A glass shard is a [`ShardOf`] a certain glass.
 /// This allows you to get information on what glass caused certain shards to spawn.
 #[derive(Component)]
 #[relationship(relationship_target = Shards)]
 pub struct ShardOf(pub Entity);
 
-/// Glasses have shards as their children. This allows you to get all the shards originating in a glass.
-/// With this, you could, for example, despawn the glass entity when all its shards have been despawned.
+/// A glass will have shards as its children. This allows you to get all the shards originating from a glass.
+/// With this, you could, for example, despawn the glass entity along with all of its shards.
 #[derive(Component, Deref)]
 #[relationship_target(relationship = ShardOf)]
 pub struct Shards(Vec<Entity>);
@@ -338,71 +333,20 @@ pub struct Shard {
     pub pos: Vec2,
 }
 
-// TODO: is this cursed? is there a better way?
-/// Allows simpler glass spawning, by automatically adding the necessary components.
-/// Requires [`ShatterPlugin`] to have been added.
-///
-/// Removed components:
-/// - [`AutoGlass`]
-///
-/// Added components:
-/// - [`Glass`]
-/// - [`Transform`], with the correct scale
-/// - [`Mesh3d`], as a cuboid
-/// - [`Collider`], as a cuboid
-///
-/// Note: no material or rigid body are added.
-/// You can completely ignore this and do things manually for more control. Keep in mind this function
-/// uses meshes and colliders of size 1x1x1, being only resized by their transform's scale
-#[derive(Component, Debug)]
-pub struct AutoGlass {
-    pub glass: Glass,
-    pub width: f32,
-    pub height: f32,
-    pub thickness: f32,
-    pub translation: Vec3,
-    pub rotation: Quat,
-}
-
+/// Resource created by the plugin with a 1x1x1 cube collider.
+/// Used by [`AutoGlass`], but you can use it too.
 #[derive(Resource)]
-struct GlassCollider(Collider);
+struct GlassCollider(pub Collider);
 
+/// Resource created by the plugin with a 1x1x1 cube mesh.
+/// Used by [`AutoGlass`], but you can use it too.
 #[derive(Resource)]
-pub struct GlassMesh(Handle<Mesh>);
+pub struct GlassMesh(pub Handle<Mesh>);
 
 /// Add this component to an entity with the [`Glass`] component to shatter it,
 /// which creates all the glass shards.
 #[derive(Component)]
 pub struct Shattered;
-
-// The entire thing is cursed but works
-// FIX: can't I read the AutoGlass struct straigt from the trigger???????????? that way I don't need the query or the unwrap
-/// Hook to add [`AutoGlass`] functionality when it is added to an entity
-fn autoglass_hook(
-    trigger: Trigger<OnAdd, AutoGlass>,
-    mut commands: Commands,
-    collider: Res<GlassCollider>,
-    mesh: Res<GlassMesh>,
-    autoglasses: Populated<&AutoGlass>,
-) {
-    let entity = trigger.target();
-    let mut entitycmd = commands.entity(entity);
-
-    let ag = autoglasses.get(entity).unwrap();
-    let glass = &ag.glass;
-
-    entitycmd.insert((
-        Transform {
-            translation: ag.translation,
-            rotation: ag.rotation,
-            scale: Vec3::new(ag.width, ag.height, ag.thickness),
-        },
-        Mesh3d(mesh.0.clone()),
-        collider.0.clone(), // TODO: test if this is faster than recomputing the collider
-        glass.clone(),
-    ));
-    entitycmd.remove::<AutoGlass>();
-}
 
 /// Hook to spawn glass shards when [`Shattered`] is added to a Glass entity
 fn shatter_hook(
