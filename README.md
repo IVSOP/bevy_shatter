@@ -4,6 +4,8 @@ Procedural glass shattering plugin for the [Bevy game engine](https://bevyengine
 
 **Note**: This plugin uses [avian3d](https://github.com/Jondolf/avian) for collider generation, but [rapier3d](https://rapier.rs/) integration should be trivial to add in the future
 
+<video src="videos/example.mp4" autoplay loop muted playsinline></video>
+
 # Usage
 
 **Creating glass**

@@ -177,23 +177,17 @@ impl Glass {
             let points = cell.points();
             let shard_center = cells[cell_id];
 
-            // points relative to this cell need to be converted to (f64, f64) for whatever reason
-            // FIX: try to avoid this
-            let cell_points: Vec<(f64, f64)> =
-                points.iter().map(|point| (point.x, point.y)).collect();
+            // if the cell has less than 3 points it can't be triangulated, this is extremely rare, have to find out why it happens
+            if let Some(delaunay) = triangulate::<Point>(&points) {
 
-            // FIX: I have no idea what might cause this to return None, but I'll just ignore it for now
-            if let Some((delaunay, _)) = triangulate_from_tuple::<Point>(&cell_points) {
-                // .expect("Error running delaunay triangulation on the cell");
-
-                // Original vertices are used as the bottom (z = 0)
+                // Original vertices are used as the top (z = 0)
                 let mut verts: Vec<Vec3> = points
                     .iter()
                     .map(|point| Vec3::new(point.x as f32, point.y as f32, 0.0))
                     .collect();
                 let n = verts.len();
 
-                // Extruded vertices as the top (z = -thickness)
+                // Extruded vertices as the bottom (z = -thickness)
                 let mut top_verts: Vec<Vec3> = points
                     .iter()
                     .map(|point| Vec3::new(point.x as f32, point.y as f32, -thickness))
