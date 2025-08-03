@@ -58,15 +58,58 @@ fn main() {
     )
     .add_observer(display_shards)
     .add_observer(hide_shards)
-    .add_systems(Startup, (setup_scene, setup_camera));
+    .add_systems(
+        Startup,
+        ((setup_materials, setup_scene).chain(), setup_camera),
+    );
 
     app.run();
+}
+
+// this example works by spawning fully transparent shards and then changing to the glass material
+// this is extremely cursed, but changing from Visibility::Hidden to Visibility::Visible will have a one frame delay,
+// which is exactly what I'm trying to avoid
+// I don't know if this wastes rendering, it's the best I could come up with
+// what DOESN'T work:
+//   - changing the visibility
+//   - setting the render layer to none / to a value the camera does not render
+#[derive(Resource)]
+pub struct GlassMaterials {
+    pub glass: Handle<StandardMaterial>,
+    pub transparent: Handle<StandardMaterial>,
+}
+
+fn setup_materials(mut commands: Commands, mut materials: ResMut<Assets<StandardMaterial>>) {
+    let glass_material = materials.add(StandardMaterial {
+        // color that contrasts with the sky
+        base_color: Color::LinearRgba(LinearRgba::new(2.5, 0.0, 0.0, 0.65)),
+        alpha_mode: AlphaMode::Blend,
+        metallic: 0.0,
+        reflectance: 0.1,
+        emissive: LinearRgba::rgb(0.0, 0.1, 0.1),
+        // cull_mode: None, // Render both sides of the glass
+        ..default()
+    });
+
+    let transparent_material = materials.add(StandardMaterial {
+        base_color: Color::LinearRgba(LinearRgba::new(0.0, 0.0, 0.0, 0.0)),
+        alpha_mode: AlphaMode::Blend,
+        metallic: 0.0,
+        reflectance: 0.1,
+        ..default()
+    });
+
+    commands.insert_resource(GlassMaterials {
+        glass: glass_material,
+        transparent: transparent_material,
+    });
 }
 
 fn setup_scene(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
+    glass_materials: Res<GlassMaterials>,
 ) {
     let ground_material = materials.add(StandardMaterial {
         base_color: Color::LinearRgba(LinearRgba::new(0.0, 2.0, 0.0, 1.0)),
@@ -88,17 +131,6 @@ fn setup_scene(
         Collider::cuboid(1.0, 1.0, 0.01),
     ));
 
-    let glass_material = materials.add(StandardMaterial {
-        // color that contrasts with the sky
-        base_color: Color::LinearRgba(LinearRgba::new(2.5, 0.0, 0.0, 0.65)),
-        alpha_mode: AlphaMode::Blend,
-        metallic: 0.0,
-        reflectance: 0.1,
-        emissive: LinearRgba::rgb(0.0, 0.1, 0.1),
-        // cull_mode: None, // Render both sides of the glass
-        ..default()
-    });
-
     // glass
     let width = 20.0;
     let height = 5.0;
@@ -112,7 +144,7 @@ fn setup_scene(
             rotation: Quat::IDENTITY,
             glass: Glass::new_with_density(width, height, 2.0),
         },
-        MeshMaterial3d(glass_material.clone()),
+        MeshMaterial3d(glass_materials.glass.clone()),
         RigidBody::Static,
         CollisionEventsEnabled,
     ));
@@ -154,6 +186,7 @@ fn display_shards(
     _trigger: Trigger<OnAdd, DisplayShards>,
     glass: Single<(Entity, &Shards), With<Glass>>,
     mut commands: Commands,
+    glass_materials: Res<GlassMaterials>,
 ) {
     // I already know there is only a single glass
     let (glass_entity, child_shards) = glass.into_inner();
@@ -166,13 +199,20 @@ fn display_shards(
         .insert(Visibility::Hidden);
 
     for shard in child_shards.iter() {
-        commands
-            .entity(shard)
-            .insert((Visibility::Visible, RigidBody::Dynamic));
+        commands.entity(shard).insert((
+            MeshMaterial3d(glass_materials.glass.clone()),
+            RigidBody::Dynamic,
+        ));
     }
 }
 
 // makes shards invisible when spawned
-fn hide_shards(trigger: Trigger<OnAdd, Shard>, mut commands: Commands) {
-    commands.entity(trigger.target()).insert(Visibility::Hidden);
+fn hide_shards(
+    trigger: Trigger<OnAdd, Shard>,
+    mut commands: Commands,
+    glass_materials: Res<GlassMaterials>,
+) {
+    commands
+        .entity(trigger.target())
+        .insert(MeshMaterial3d(glass_materials.transparent.clone()));
 }
